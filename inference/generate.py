@@ -78,6 +78,27 @@ def generate(
     return completion_tokens
 
 
+
+def _prompt_fits_context(prompt_token_count, max_new_tokens, max_seq_len):
+    """Return whether the prompt and the requested output budget both fit."""
+    return (
+        prompt_token_count >= 0
+        and max_new_tokens >= 0
+        and prompt_token_count + max_new_tokens <= max_seq_len
+    )
+
+
+def _drop_oldest_complete_turn(messages):
+    """Remove one complete user/assistant pair from the active conversation."""
+    if (
+        len(messages) >= 2
+        and messages[0].get("role") == "user"
+        and messages[1].get("role") == "assistant"
+    ):
+        del messages[:2]
+        return True
+    return False
+
 def main(
     ckpt_path: str,
     config: str,
@@ -135,10 +156,37 @@ def main(
                 break
             elif prompt == "/clear":
                 messages.clear()
+                print("Conversation history cleared.")
                 continue
+            elif prompt == "/drop-oldest":
+                if _drop_oldest_complete_turn(messages):
+                    print("Removed the oldest complete user/assistant turn from active context.")
+                else:
+                    print("No complete earlier turn is available to remove.")
+                continue
+            candidate_messages = messages + [{"role": "user", "content": prompt}]
+            prompt_tokens = tokenizer.apply_chat_template(
+                candidate_messages, add_generation_prompt=True
+            )
+            if not _prompt_fits_context(
+                len(prompt_tokens), max_new_tokens, model.max_seq_len
+            ):
+                print(
+                    f"[context limit] This turn needs {len(prompt_tokens)} prompt tokens "
+                    f"plus {max_new_tokens} reserved output tokens, exceeding "
+                    f"max_seq_len={model.max_seq_len}. The turn was not added to history. "
+                    "Use /drop-oldest or /clear, then enter your message again."
+                )
+                continue
+
             messages.append({"role": "user", "content": prompt})
-            prompt_tokens = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
-            completion_tokens = generate(model, [prompt_tokens], max_new_tokens, tokenizer.eos_token_id, temperature)
+            completion_tokens = generate(
+                model,
+                [prompt_tokens],
+                max_new_tokens,
+                tokenizer.eos_token_id,
+                temperature,
+            )
             completion = tokenizer.decode(completion_tokens[0], skip_special_tokens=True)
             print(completion)
             messages.append({"role": "assistant", "content": completion})
