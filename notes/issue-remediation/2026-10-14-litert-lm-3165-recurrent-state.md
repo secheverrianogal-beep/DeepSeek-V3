@@ -35,3 +35,20 @@ The proposed approach is appropriately narrower than indiscriminately zeroing ev
 ## Contribution boundary
 
 This document is an independent review note in the personal DeepSeek-V3 fork, not a source-code fix to LiteRT-LM. The connected GitHub account has no write access to the LiteRT-LM upstream repository, and no writable LiteRT-LM fork is available. Use the existing upstream PR/issues for technical review; do not claim the bug is fixed until the candidate is accepted and validation evidence is available.
+
+
+## Review finding — possible correctness gap in prefix-reuse path
+
+**Classification:** high-priority review concern; not independently reproduced end to end in this environment.
+
+The candidate helper `ClearLinearAttentionStateIfFirstStep()` exits without clearing whenever `llm_context_->runtime_state().current_step != 0`. However, the existing high-level `ResourceManager::Prefill()` path in `runtime/framework/resource_management/resource_manager.cc` can call `RemoveMatchingTokens(..., &current_step)` to reuse a prompt prefix, then pass only the remaining suffix to the executor at the selected step. The original report in #3165 discusses this exact class of prefix-reuse behavior.
+
+The new tests cover direct executor calls with a new context at step 0, and a separate direct prefill with a non-zero step that intentionally keeps state. They do **not** visibly exercise two conversations on one Engine through ResourceManager's prefix-matching logic. If a new conversation reaches the executor after matching a non-empty prefix and the effective runtime step is non-zero, the new helper may bypass clearing and leave stale recurrent state. The exact path must be verified because the executor's runtime step and the prefill parameter's selected step are not necessarily established at the same point in every ResourceManager branch.
+
+**Required regression:** create two conversations through the public/high-level Engine/ResourceManager path, on the same Engine, with a shared prompt/system prefix and different suffixes. Compare the second response with a fresh-Engine reference and explicitly record whether `RemoveMatchingTokens` reused the prefix and what step reached the executor. Include the converse control for continuing the same conversation, where retaining state is correct.
+
+**Important:** do not fix this by blindly clearing recurrent state at a non-zero step while skipping the cached prefix: that would leave the recurrent state for the skipped prefix missing. A correct approach may need to disable prefix-token reuse for models declaring linear-attention/recurrent state, or save and restore the recurrent state corresponding to that prefix. Keep this distinct from rewind-to-nonzero-step support, which the PR itself says requires state snapshot/restore.
+
+## Notification / publication status — 14 October 2026
+
+A targeted top-level comment to upstream PR #3945 was attempted through the connected GitHub integration and rejected with HTTP 403 `Resource not accessible by integration`. Therefore no review comment was published upstream. The finding is recorded in the personal-fork PR discussion and Linear task SER-29 instead; it remains a review concern until an upstream-authorized reviewer can evaluate it.
