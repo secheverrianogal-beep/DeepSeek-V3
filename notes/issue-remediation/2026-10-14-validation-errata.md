@@ -18,6 +18,6 @@ This PR contains documentation only; no Gallery or LiteRT-LM source code is chan
 
 ## Next concrete steps
 
-1. Keep #1706 open until the stronger preservation patch (if retained) is committed and targeted tests pass on the exact final head.
+1. Keep #1706 open until the stronger preservation test already present in head `04f9384c39faf76ea88dc6e2c483ad91ab0b1c4b` is run against that exact test-file version and CI evidence is reviewed. Do not ask to commit the test again; the live diff already contains it.
 2. Check GitHub Actions/status checks for the exact SHA again before claiming CI passed.
 3. Continue to treat all Gallery/LiteRT-LM items in the catalog as proposed fixes, not implemented source patches, until a writable authorized fork is connected and source regressions are run there.
