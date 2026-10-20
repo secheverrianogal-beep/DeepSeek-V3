@@ -99,6 +99,27 @@ def _drop_oldest_complete_turn(messages):
         return True
     return False
 
+def _read_interactive_prompt(world_size, rank, dist):
+    """Read one prompt and turn terminal EOF into a clean distributed exit."""
+    if world_size == 1:
+        try:
+            return input(">>> ")
+        except EOFError:
+            print()
+            return "/exit"
+
+    if rank == 0:
+        try:
+            prompt = input(">>> ")
+        except EOFError:
+            print()
+            prompt = "/exit"
+        objects = [prompt]
+    else:
+        objects = [None]
+    dist.broadcast_object_list(objects, 0)
+    return objects[0]
+
 def main(
     ckpt_path: str,
     config: str,
@@ -142,16 +163,7 @@ def main(
     if interactive:
         messages = []
         while True:
-            if world_size == 1:
-                prompt = input(">>> ")
-            elif rank == 0:
-                prompt = input(">>> ")
-                objects = [prompt]
-                dist.broadcast_object_list(objects, 0)
-            else:
-                objects = [None]
-                dist.broadcast_object_list(objects, 0)
-                prompt = objects[0]
+            prompt = _read_interactive_prompt(world_size, rank, dist)
             if prompt == "/exit":
                 break
             elif prompt == "/clear":
