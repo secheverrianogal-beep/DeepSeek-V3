@@ -51,6 +51,16 @@ class InteractiveContextRecoveryTests(unittest.TestCase):
     def setUpClass(cls):
         cls.module = load_generate_module()
 
+
+    def test_single_process_eof_requests_exit(self):
+        with patch("builtins.input", side_effect=EOFError):
+            self.assertEqual(self.module._read_interactive_prompt(1, 0, None), "/exit")
+
+    def test_distributed_eof_is_broadcast_as_exit(self):
+        dist = types.SimpleNamespace(broadcast_object_list=lambda objects, _src: None)
+        with patch("builtins.input", side_effect=EOFError):
+            self.assertEqual(self.module._read_interactive_prompt(2, 0, dist), "/exit")
+
     def test_prompt_budget_reserves_requested_output_tokens(self):
         fits = self.module._prompt_fits_context
         self.assertTrue(fits(prompt_token_count=80, max_new_tokens=20, max_seq_len=100))
